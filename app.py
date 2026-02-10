@@ -99,53 +99,60 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Instanciar filtro PII
+# Instanciar filtros
+from name_filter import NameFilter
+
+if "name_filter" not in st.session_state:
+    st.session_state.name_filter = NameFilter()
+
 pii_filter = PIIFilter()
 
 # Capturar entrada
 if prompt := st.chat_input("Escribe tu mensaje..."):
-    # 1. PII Filtering
+    # 1. PII Regex (DNI, Email, Tarjetas...)
     try:
-        clean_prompt = pii_filter.anonymize(prompt)
+        regex_clean_prompt = pii_filter.anonymize(prompt)
     except Exception as e:
-        st.error(f"Error al procesar PII: {e}")
-        clean_prompt = prompt
+        st.error(f"Error al procesar Regex PII: {e}")
+        regex_clean_prompt = prompt
 
-    # 2. Llama Guard Check (Si está activo)
+    # 2. Filtrado de Nombres (Gemma3:270m)
+    try:
+        # Usamos el cliente para llamar a gemma3:270m
+        full_clean_prompt = st.session_state.name_filter.anonymize(client, regex_clean_prompt)
+    except Exception as e:
+        print(f"Error en filtro de nombres: {e}")
+        full_clean_prompt = regex_clean_prompt
+
+    # 3. Llama Guard Check
     is_safe = True
     violation_msg = ""
     
     if enable_guard:
-        # Validamos el prompt limpio (safe_content)
         with st.spinner("Analizando seguridad..."):
-            is_safe, violation_msg = LlamaGuard.check_safety(client, clean_prompt)
+            is_safe, violation_msg = LlamaGuard.check_safety(client, full_clean_prompt)
     
     if not is_safe:
         st.error(f"⛔ Este mensaje no se puede responder por: **{violation_msg}**")
         st.warning("Por favor, reformula tu pregunta de manera segura.")
-        # No añadimos al historial, permitimos reintento inmediato
     else:
-        # Si es seguro, procedemos
-        
-        # 3. Guardar en Session State
-        # Guardamos AMBOS: original para mostrar, y clean para enviar
+        # 4. Guardar en Session State e Imprimir
         st.session_state.messages.append({
             "role": "user", 
-            "content": prompt,        # Visualización
-            "safe_content": clean_prompt # Lógica
+            "content": prompt,            # Visualización (Original)
+            "safe_content": full_clean_prompt # Para el modelo (Ficticios + [DNI])
         })
         
-        # Mostrar mensaje usuario inmediatamente
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # 4. Generar respuesta
+        # 5. Generar respuesta
         with st.chat_message("assistant"):
             response_placeholder = st.empty()
-            full_response = ""
+            full_response_safe = "" 
             
             try:
-                # Construir payload para el modelo
-                # Usamos safe_content si existe, sino content
+                # Construir payload seguro
                 messages_payload = [
                     {
                         "role": m["role"], 
@@ -159,15 +166,24 @@ if prompt := st.chat_input("Escribe tu mensaje..."):
                     stream=True
                 )
                 
+                # Streaming (Muestra lo que genera el modelo -> Nombres Ficticios)
                 for chunk in stream:
                     content = chunk['message']['content']
-                    full_response += content
-                    response_placeholder.markdown(full_response + "▌")
+                    full_response_safe += content
+                    response_placeholder.markdown(full_response_safe + "▌")
                 
-                response_placeholder.markdown(full_response)
+                # Des-anonimizar
+                final_response_real = st.session_state.name_filter.deanonymize(full_response_safe)
+                
+                # Actualizar el placeholder con la versión real
+                response_placeholder.markdown(final_response_real)
                 
                 # Guardar respuesta
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": final_response_real,      # Real (Juan)
+                    "safe_content": full_response_safe   # Ficticio (Hugo)
+                })
                 
             except Exception as e:
                 st.error(f"❌ Error durante la generación: {str(e)}")
