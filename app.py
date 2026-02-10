@@ -2,6 +2,8 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 from ollama import Client
+from pii_manager import PIIFilter
+from llama_guard import LlamaGuard
 
 # Cargar variables de entorno
 load_dotenv()
@@ -44,7 +46,6 @@ with st.sidebar:
     st.success(f"Conectado a: **{server_option}**")
     st.markdown("---")
 
-    # Detección dinámica de modelos
     # Detección dinámica de modelos con Fallback
     available_models = []
     try:
@@ -56,11 +57,11 @@ with st.sidebar:
              # Fallback si la estructura es diferente
             available_models = [m['model'] for m in models_info]
     except Exception as e:
-        st.warning(f"⚠️ No se pudo obtener la lista de modelos de {server_option}. Usando lista por defecto.")
-        # Logging del error en consola para depuración
-        print(f"Error listando modelos: {e}")
+        # Silenciar warning intrusivo
+        print(f"Warning: No se pudieron listar modelos de {server_option}: {e}")
 
     # Lista por defecto si falla la detección o no hay modelos
+    # Aseguramos que gemma3:latest esté
     if not available_models:
         available_models = ["gemma3:latest", "llama3", "mistral"]
 
@@ -69,8 +70,13 @@ with st.sidebar:
         available_models,
         index=0
     )
-    # Líneas eliminadas por limpieza y unificación de lógica de error
-
+    
+    st.markdown("---")
+    
+    # Toggle Llama Guard
+    enable_guard = st.toggle("🛡️ Activar Llama Guard", value=True)
+    if enable_guard:
+        st.info("Filtro de seguridad activo (llama-guard3)")
 
     st.markdown("---")
     
@@ -86,50 +92,82 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # Mostrar mensajes
+# UX Improvement: Mostrar 'content' (lo que escribió el usuario)
+# El 'safe_content' se usa internamente para el modelo
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Capturar entrada
-# Capturar entrada
-from pii_manager import PIIFilter
-
-# Instanciar filtro (fuera del loop para eficiencia, idealmente al inicio, pero aquí funciona)
+# Instanciar filtro PII
 pii_filter = PIIFilter()
 
+# Capturar entrada
 if prompt := st.chat_input("Escribe tu mensaje..."):
-    # 1. Filtrar mensaje (Seguridad: Lo que llega al LLM y al historial debe estar limpio)
+    # 1. PII Filtering
     try:
         clean_prompt = pii_filter.anonymize(prompt)
     except Exception as e:
-        st.error(f"Error al procesar el texto: {e}")
-        clean_prompt = prompt # Fallback seguro o bloquear? Mejor fallback para no romper UX, advirtiendo.
+        st.error(f"Error al procesar PII: {e}")
+        clean_prompt = prompt
 
-    # Guardar y mostrar mensaje usuario (Ya filtrado)
-    st.session_state.messages.append({"role": "user", "content": clean_prompt})
-    with st.chat_message("user"):
-        st.markdown(clean_prompt) # Muestra [DNI] etc. al usuario, confirmando seguridad.
-
-    # Generar respuesta
-    with st.chat_message("assistant"):
-        response_placeholder = st.empty()
-        full_response = ""
+    # 2. Llama Guard Check (Si está activo)
+    is_safe = True
+    violation_msg = ""
+    
+    if enable_guard:
+        # Validamos el prompt limpio (safe_content)
+        with st.spinner("Analizando seguridad..."):
+            is_safe, violation_msg = LlamaGuard.check_safety(client, clean_prompt)
+    
+    if not is_safe:
+        st.error(f"⛔ Este mensaje no se puede responder por: **{violation_msg}**")
+        st.warning("Por favor, reformula tu pregunta de manera segura.")
+        # No añadimos al historial, permitimos reintento inmediato
+    else:
+        # Si es seguro, procedemos
         
-        try:
-            # Streaming usando el cliente configurado
-            stream = client.chat(
-                model=selected_model,
-                messages=st.session_state.messages,
-                stream=True
-            )
+        # 3. Guardar en Session State
+        # Guardamos AMBOS: original para mostrar, y clean para enviar
+        st.session_state.messages.append({
+            "role": "user", 
+            "content": prompt,        # Visualización
+            "safe_content": clean_prompt # Lógica
+        })
+        
+        # Mostrar mensaje usuario inmediatamente
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # 4. Generar respuesta
+        with st.chat_message("assistant"):
+            response_placeholder = st.empty()
+            full_response = ""
             
-            for chunk in stream:
-                content = chunk['message']['content']
-                full_response += content
-                response_placeholder.markdown(full_response + "▌")
-            
-            response_placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
-        except Exception as e:
-            st.error(f"❌ Error durante la generación: {str(e)}")
+            try:
+                # Construir payload para el modelo
+                # Usamos safe_content si existe, sino content
+                messages_payload = [
+                    {
+                        "role": m["role"], 
+                        "content": m.get("safe_content", m["content"])
+                    } for m in st.session_state.messages
+                ]
+
+                stream = client.chat(
+                    model=selected_model,
+                    messages=messages_payload,
+                    stream=True
+                )
+                
+                for chunk in stream:
+                    content = chunk['message']['content']
+                    full_response += content
+                    response_placeholder.markdown(full_response + "▌")
+                
+                response_placeholder.markdown(full_response)
+                
+                # Guardar respuesta
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
+                
+            except Exception as e:
+                st.error(f"❌ Error durante la generación: {str(e)}")
