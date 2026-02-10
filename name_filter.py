@@ -22,28 +22,36 @@ class NameFilter:
     def get_names_from_llm(self, client: Client, text: str) -> list[str]:
         """Usa Gemma3:270m para extraer nombres particulares."""
         print(f"\n--- [NameFilter] Analizando texto: '{text[:50]}...' ---")
-        prompt = f"""### ROL
-Eres un agente de seguridad de datos. Tu objetivo es detectar nombres de personas particulares (no famosas) para proteger su identidad.
+        prompt = f"""### INSTRUCCIÓN
+Eres un sistema experto en detección de PII (Información Personal Identificable). 
+Tu ÚNICA tarea es extraer nombres de personas privadas (ciudadanos comunes) del texto proporcionado abajo.
 
-### INSTRUCCIONES DE FORMATO
-1. Si encuentras uno o más nombres de particulares, devuélvelos SIEMPRE dentro de una lista con este formato: ["Nombre 1", "Nombre 2"]
-2. Si NO encuentras nombres de particulares, responde únicamente: []
-3. NO incluyas explicaciones ni texto adicional.
+### REGLAS ESTRICTAS
+1. **IGNORA** cualquier nombre de celebridad, personaje histórico, político o figura pública (ej: Messi, Shakira, Cervantes).
+2. **EXTRAE** solo nombres de personas normales/privadas mencionadas.
+3. Devuelve los nombres EXACTAMENTE como aparecen en el texto.
+4. Tu respuesta debe ser SOLAMENTE una lista JSON válida. Sin explicaciones.
+5. Si no hay nombres privados, devuelve: []
 
-### CRITERIO DE FILTRADO
-- EXCLUIR: Personajes históricos, artistas famosos, políticos o figuras públicas conocidas (ej. Cristóbal Colón, Shakira, Steve Jobs).
-- INCLUIR: Nombres de personas comunes, usuarios o familiares mencionados en el texto.
+### EJEMPLOS FEW-SHOT (Solo para guiarte, no los copies)
+Input: "Soy Lucas y quiero saber de Cervantes."
+Output: ["Lucas"]
 
-### EJEMPLOS
-- Texto: "Soy Lucas y quiero saber de Cervantes." -> Salida: ["Lucas"]
-- Texto: "Hablame de Marie Curie." -> Salida: []
-- Texto: "Mi nombre es Ana López y mi tío se llama Pedro Martínez." -> Salida: ["Ana López", ["Pedro Martínez"]
-- Texto: "Dime algo sobre Cristiano Ronaldo y mi amigo Juanito." -> Salida: ["Juanito"]
+Input: "Hablame de Marie Curie."
+Output: []
 
-### TEXTO A PROCESAR:
-"{text}"
+Input: "Mi nombre es Ana López y mi tío se llama Pedro Martínez."
+Output: ["Ana López", "Pedro Martínez"]
 
-### RESULTADO:
+Input: "Dime algo sobre Cristiano Ronaldo y mi amigo Juanito."
+Output: ["Juanito"]
+
+### TEXTO A PROCESAR (Analiza esto):
+<<<
+{text}
+>>>
+
+### JSON DE SALIDA:
 """
         try:
             response = client.chat(

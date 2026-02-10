@@ -50,12 +50,30 @@ with st.sidebar:
     available_models = []
     try:
         models_info = client.list()
-        # Ajuste: algunos clientes devuelven lista directa o dict con 'models'
-        if isinstance(models_info, dict) and 'models' in models_info:
-            available_models = [m['model'] for m in models_info['models']]
+        
+        # Normalizar la lista de modelos
+        # Caso 1: Objeto ListResponse con atributo 'models'
+        if hasattr(models_info, 'models'):
+            raw_models = models_info.models
+        # Caso 2: Diccionario con clave 'models'
+        elif isinstance(models_info, dict) and 'models' in models_info:
+            raw_models = models_info['models']
+        # Caso 3: Es la lista directa
         else:
-             # Fallback si la estructura es diferente
-            available_models = [m['model'] for m in models_info]
+            raw_models = models_info
+
+        # Extraer nombres
+        for m in raw_models:
+            # Si es objeto con atributo model
+            if hasattr(m, 'model'):
+                available_models.append(m.model)
+            # Si es diccionario
+            elif isinstance(m, dict):
+                available_models.append(m['model'])
+            # Si es string (raro, pero posible en versiones viejas mockeadas)
+            elif isinstance(m, str):
+                available_models.append(m)
+                
     except Exception as e:
         # Silenciar warning intrusivo
         print(f"Warning: No se pudieron listar modelos de {server_option}: {e}")
