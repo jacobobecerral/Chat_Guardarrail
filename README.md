@@ -1,47 +1,67 @@
-# 🦙 Ollama Chat: Local & Híbrido
+# Chat Seguro: Local e Hibrido
 
-Interfaz de chat profesional construida con **Streamlit** para interactuar con modelos de **Ollama**. Soporta conexión **Local** y **Remota** (Profesor).
+Interfaz de chat profesional construida con Streamlit para interactuar con modelos de Ollama de forma segura. El sistema permite conexiones locales y remotas, integrando multiples capas de proteccion de datos.
 
-## 🚀 Requisitos Previos
+## Requisitos Previos
 
-1.  **Ollama**: Instalado localmente.
-2.  **uv**: Gestor de paquetes.
-    ```bash
-    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-    ```
+1. Ollama: Instalado y en ejecucion.
+2. uv: Gestor de paquetes avanzado para Python.
 
-## 🛠️ Instalación y Configuración
+```bash
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
 
-### 1. Inicializar y Configurar Dependencias
-El proyecto usa `uv` para gestionar todo.
+## Instalacion y Configuracion
+
+### 1. Inicializar Dependencias
+El proyecto utiliza uv para la gestion de dependencias y el entorno virtual.
 
 ```bash
 uv init
 uv add streamlit ollama python-dotenv
 ```
 
-### 2. Configuración de Seguridad (.env)
-Crea un archivo `.env` en la raíz del proyecto (ya incluido en la configuración inicial):
+### 2. Variables de Entorno
+Cree un archivo .env en la raiz del proyecto para configurar el acceso al servidor remoto:
 
 ```env
 PROFESSOR_HOST=10.10.99.77
 ```
-*Este archivo es ignorado por git para seguridad.*
 
-## ▶️ Ejecución
+## Funciones de Seguridad y Privacidad
 
-Inicia la aplicación:
+El sistema implementa una arquitectura de seguridad por capas para proteger la informacion sensible:
+
+1. Filtro PII mediante Regex:
+   - Deteccion de correos electronicos.
+   - Validacion de tarjetas de credito.
+   - Validacion de IBAN (Espana).
+   - Identificacion de DNI y NIE.
+   - Seguridad Social (NSS).
+
+2. Anonimizacion de Nombres con LLM:
+   - Utiliza el modelo gemma3:270m para identificar nombres de personas privadas.
+   - Sustitucion dinamica por nombres ficticios para proteger la identidad.
+   - De-anonimizacion automatica en la respuesta para mantener la coherencia.
+   - Exclusion inteligente de figuras publicas y celebridades.
+
+3. Llama Guard 3:
+   - Verificacion de seguridad del contenido mediante el modelo llama-guard3.
+   - Clasificacion de riesgos en multiples categorias (odio, violencia, privacidad, etc.).
+   - Bloqueo preventivo de contenido peligroso.
+
+## Caracteristicas Adicionales
+
+- Conexion Hibrida: Selector de servidor entre maquina local y servidor remoto.
+- Interfaz Profesional: Diseno limpio con Streamlit, soporte para historial de chat y limpieza de mensajes.
+- Deteccion Dinamica: La lista de modelos se sincroniza automaticamente con el servidor seleccionado.
+
+## Ejecucion
+
+Inicie la aplicacion con el siguiente comando:
 
 ```bash
 uv run streamlit run app.py
 ```
 
-## ✨ Características Nuevas
-
-*   **🔌 Conexión Híbrida**: Selecciona en la barra lateral entre tu máquina local y el servidor del profesor.
-*   **🛡️ Seguridad**: Variables de entorno gestionadas con `.env`.
-*   **🎨 UI Mejorada**: Tema oscuro configurado por defecto y elementos innecesarios ocultos.
-*   **🧠 Dinámico**: La lista de modelos se actualiza según el servidor al que te conectes.
-
----
-*Optimizado para entornos educativos de IA.*
+Optimizado para entornos educativos y desarrollo seguro de Inteligencia Artificial.
