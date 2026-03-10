@@ -100,6 +100,7 @@ with st.sidebar:
     
     # Botón para limpiar historial
     if st.button("🧹 Limpiar Historial", type="primary"):
+        print("Limpiando historial...")
         st.session_state.messages = []
         st.rerun()
 
